@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Shore — Cover Studio</title>
+<meta name="description" content="Turn any photo and caption into multi-panel neon-sunset cover art, offline in your browser. Export 1080×1080, 1080×1350 and 1920×1080 PNGs.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">✦</span>
+    <div>
+      <h1>Neon Shore <span>Cover Studio</span></h1>
+      <p>Multi-panel poster covers from your photos — offline, no upload.</p>
+    </div>
+  </div>
+  <ol class="steps" aria-label="How it works">
+    <li><b>1</b> Drop a photo</li>
+    <li><b>2</b> Pick a layout &amp; grade</li>
+    <li><b>3</b> Export a PNG</li>
+  </ol>
+</header>
+
+<main class="studio">
+  <section class="controls" aria-label="Cover controls">
+    <div class="panel" id="dropZone">
+      <h2>Your photos</h2>
+      <p class="hint">Photos stay on your machine. Click a photo to put it in the selected panel.</p>
+      <div class="tray" id="photoTray"></div>
+      <div class="row">
+        <button type="button" id="uploadBtn" class="btn primary">＋ Add photos</button>
+        <span id="photoCount" class="count">0 photos</span>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" multiple hidden>
+      <p class="hint small">Or drag &amp; drop images anywhere on this panel.</p>
+      <div class="row">
+        <button type="button" id="fillOneBtn" class="btn">Fill all panels · one photo</button>
+        <button type="button" id="fillCycleBtn" class="btn">Fill all panels · cycle photos</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Layout</h2>
+      <div class="chips" id="layoutPicker"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Colour grade</h2>
+      <div class="chips" id="gradePicker"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Caption</h2>
+      <label class="field">Title
+        <input type="text" id="titleInput" maxlength="24" autocomplete="off">
+      </label>
+      <label class="field">Subtitle
+        <input type="text" id="subtitleInput" maxlength="48" autocomplete="off">
+      </label>
+      <label class="check"><input type="checkbox" id="badgeToggle"> Starburst badge</label>
+      <label class="check"><input type="checkbox" id="grainToggle"> Film grain</label>
+      <label class="check"><input type="checkbox" id="vignetteToggle"> Vignette</label>
+    </div>
+
+    <div class="panel">
+      <h2 id="panelLabel">Panel 1 of 3</h2>
+      <p class="hint">Click a panel in the preview to select it, drag to move its photo, scroll to zoom.</p>
+      <label class="field">Zoom <span id="zoomValue" class="value">1.15×</span>
+        <input type="range" id="zoomRange" min="1" max="3" step="0.01" value="1.15">
+      </label>
+      <label class="field">Move left – right
+        <input type="range" id="xRange" min="-1" max="1" step="0.01" value="0">
+      </label>
+      <label class="field">Move up – down
+        <input type="range" id="yRange" min="-1" max="1" step="0.01" value="0">
+      </label>
+      <div class="row">
+        <button type="button" id="undoBtn" class="btn">↩ Undo</button>
+        <button type="button" id="redoBtn" class="btn">↪ Redo</button>
+      </div>
+    </div>
+
+    <div class="panel export">
+      <h2>Export</h2>
+      <div class="chips" id="sizePicker"></div>
+      <div class="row">
+        <button type="button" id="exportBtn" class="btn primary big">↓ Export PNG</button>
+        <button type="button" id="exportAllBtn" class="btn big">↓ All 3 sizes</button>
+      </div>
+      <p id="exportStatus" class="hint" role="status">Ready.</p>
+    </div>
+  </section>
+
+  <section class="preview-wrap" aria-label="Live preview">
+    <canvas id="preview" width="640" height="360"></canvas>
+    <p class="hint">Live preview — what you see is the PNG you export.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <p>Neon Shore Cover Studio — your photos never leave this browser. Lettering: Anton &amp; Pacifico (SIL Open Font License, see <code>fonts/</code>). Sample photos were made with an image model for this app and are free to use.</p>
+</footer>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
