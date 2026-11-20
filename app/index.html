@@ -3,85 +3,104 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vice Cover Studio — GTA-style multi-panel cover maker</title>
-<link rel="stylesheet" href="./style.css">
+<title>Neon Coast Cover Studio — GTA-style multi-panel cover maker</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark">VC</span>
+    <span class="brand-mark">NC</span>
     <div>
-      <h1>Vice Cover Studio</h1>
-      <p>Multi-panel cover art maker · neon-sunset grade · offline</p>
+      <h1>Neon Coast Cover Studio</h1>
+      <p>Turn your photos + a caption into a Vice City poster. Offline, free, no upload.</p>
     </div>
   </div>
   <div class="top-actions">
-    <button id="shuffleBtn" type="button">Shuffle</button>
-    <button id="undoBtn" type="button" disabled>Undo</button>
-    <button id="redoBtn" type="button" disabled>Redo</button>
+    <button id="undo" type="button" title="Undo">Undo</button>
+    <button id="redo" type="button" title="Redo">Redo</button>
+    <button id="shuffle" type="button" title="Shuffle layout and grade">Shuffle</button>
+    <button id="load-samples" type="button">Load sample photos</button>
   </div>
 </header>
-<main class="layout">
-  <section class="stage">
-    <canvas id="preview" width="1920" height="1080" aria-label="Cover preview"></canvas>
-    <p class="hint">Click a panel to select it · drag to move its photo · scroll to zoom it</p>
-  </section>
-  <aside class="panel">
-    <section>
-      <h2>Layout</h2>
-      <div id="layoutRow" class="btn-row"></div>
-    </section>
-    <section>
-      <h2>Photo</h2>
-      <label class="field">Upload your own
-        <input id="uploadInput" type="file" accept="image/*" multiple>
+
+<main class="workspace">
+  <section class="controls" aria-label="Editor controls">
+    <div class="group">
+      <h2>1 · Photos</h2>
+      <label class="file-btn">Upload photos
+        <input id="photo-input" type="file" accept="image/*" multiple>
       </label>
-      <label class="field"><span>Panel <span id="panelLabel">1</span> photo</span>
-        <select id="panelPhoto"></select>
-      </label>
-      <label class="field">Zoom
-        <input id="zoomRange" type="range" min="1" max="3" step="0.01" value="1.1">
-        <span id="zoomValue">1.10×</span>
-      </label>
-      <div class="btn-row">
-        <button id="centerPhoto" type="button">Centre photo</button>
-        <button id="resetPanel" type="button">Reset panel</button>
+      <p class="hint">Your photos stay on your machine. Click a panel, then pick its photo below.</p>
+      <div id="photo-strip" class="photo-strip"></div>
+      <div class="row">
+        <button id="panel-prev-photo" type="button">◀ Photo</button>
+        <button id="panel-next-photo" type="button">Photo ▶</button>
       </div>
-    </section>
-    <section>
-      <h2>Caption</h2>
-      <label class="field">Kicker
-        <input id="kickerInput" type="text" maxlength="30" value="WELCOME TO THE">
-      </label>
-      <label class="field">Script line
-        <input id="scriptInput" type="text" maxlength="30" value="sunset heist">
-      </label>
-      <label class="field">Title
-        <input id="titleInput" type="text" maxlength="24" value="NEON SHORES">
-      </label>
-      <div id="letteringRow" class="btn-row"></div>
-    </section>
-    <section>
-      <h2>Grade</h2>
-      <div id="gradeRow" class="btn-row"></div>
-      <label class="check"><input id="sunToggle" type="checkbox" checked> Synthwave sun</label>
-      <label class="check"><input id="halftoneToggle" type="checkbox" checked> Halftone dots</label>
-      <label class="check"><input id="grainToggle" type="checkbox" checked> Film grain</label>
-      <label class="check"><input id="vignetteToggle" type="checkbox" checked> Vignette</label>
-    </section>
-    <section>
-      <h2>Export PNG</h2>
-      <div id="sizeRow" class="btn-row"></div>
-      <div class="export-row">
+      <p class="hint">Selected panel: <strong id="panel-label">—</strong>. Drag the photo on the preview to move it, scroll to zoom.</p>
+      <label>Zoom <input id="zoom" type="range" min="1" max="2.5" step="0.01" value="1.15"></label>
+      <label>Move X <input id="pan-x" type="range" min="-0.5" max="0.5" step="0.01" value="0"></label>
+      <label>Move Y <input id="pan-y" type="range" min="-0.5" max="0.5" step="0.01" value="0"></label>
+    </div>
+
+    <div class="group">
+      <h2>2 · Layout</h2>
+      <div id="layout-pick" class="pick-grid"></div>
+    </div>
+
+    <div class="group">
+      <h2>3 · Grade</h2>
+      <div id="grade-pick" class="pick-grid"></div>
+    </div>
+
+    <div class="group">
+      <h2>4 · Caption</h2>
+      <label>Kicker <input id="kicker" type="text" value="WELCOME TO THE" maxlength="40"></label>
+      <label>Title <input id="title" type="text" value="NEON COAST" maxlength="24"></label>
+      <label>Script line <input id="script" type="text" value="sunset heist" maxlength="40"></label>
+      <div class="row">
+        <label>Lettering
+          <select id="lettering">
+            <option value="block">Block</option>
+            <option value="neon">Neon glow</option>
+            <option value="outline">Outline</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>5 · Effects</h2>
+      <label class="check"><input id="fx-sun" type="checkbox" checked> Synthwave sun</label>
+      <label class="check"><input id="fx-halftone" type="checkbox" checked> Halftone dots</label>
+      <label class="check"><input id="fx-grain" type="checkbox" checked> Film grain</label>
+      <label class="check"><input id="fx-vignette" type="checkbox" checked> Vignette</label>
+      <label class="check"><input id="fx-badge" type="checkbox" checked> Coast badge</label>
+    </div>
+
+    <div class="group export-group">
+      <h2>6 · Export PNG</h2>
+      <div class="row wrap">
         <button id="export-1080x1080" type="button">1080 × 1080</button>
         <button id="export-1080x1350" type="button">1080 × 1350</button>
-        <button id="export-1920x1080" type="button" class="primary">1920 × 1080</button>
+        <button id="export-1920x1080" type="button">1920 × 1080</button>
+        <button id="export-all" type="button" class="primary">All 3 sizes</button>
       </div>
-      <p id="status" role="status">Pick a layout, a photo and a caption — then export.</p>
-    </section>
-    <p class="fine">Photos stay on your machine. Fonts: Anton &amp; Pacifico (SIL OFL) in app/fonts. No Rockstar artwork, logos or fonts.</p>
-  </aside>
+      <p id="status" class="status" role="status">Ready.</p>
+    </div>
+  </section>
+
+  <section class="stage" aria-label="Cover preview">
+    <div class="canvas-wrap">
+      <canvas id="cover" width="1080" height="1080"></canvas>
+    </div>
+    <p class="hint">Preview is live. Pick a size above to download the real PNG.</p>
+  </section>
 </main>
-<script type="module" src="./src/main.js"></script>
+
+<footer class="foot">
+  <p>Neon Coast Cover Studio — an original fan-style poster maker. No Rockstar Games logo, artwork or font is used; lettering uses system fonts only. Sample photos were made with an image model and are free to use.</p>
+</footer>
+
+<script type="module" src="src/main.js"></script>
 </body>
 </html>
