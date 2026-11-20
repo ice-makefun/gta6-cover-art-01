@@ -1,108 +1,87 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Neon Shore — Cover Studio</title>
-<meta name="description" content="Turn any photo and caption into multi-panel neon-sunset cover art, offline in your browser. Export 1080×1080, 1080×1350 and 1920×1080 PNGs.">
-<link rel="stylesheet" href="style.css">
+<title>Vice Cover Studio — GTA-style multi-panel cover maker</title>
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark" aria-hidden="true">✦</span>
+    <span class="brand-mark">VC</span>
     <div>
-      <h1>Neon Shore <span>Cover Studio</span></h1>
-      <p>Multi-panel poster covers from your photos — offline, no upload.</p>
+      <h1>Vice Cover Studio</h1>
+      <p>Multi-panel cover art maker · neon-sunset grade · offline</p>
     </div>
   </div>
-  <ol class="steps" aria-label="How it works">
-    <li><b>1</b> Drop a photo</li>
-    <li><b>2</b> Pick a layout &amp; grade</li>
-    <li><b>3</b> Export a PNG</li>
-  </ol>
+  <div class="top-actions">
+    <button id="shuffleBtn" type="button">Shuffle</button>
+    <button id="undoBtn" type="button" disabled>Undo</button>
+    <button id="redoBtn" type="button" disabled>Redo</button>
+  </div>
 </header>
-
-<main class="studio">
-  <section class="controls" aria-label="Cover controls">
-    <div class="panel" id="dropZone">
-      <h2>Your photos</h2>
-      <p class="hint">Photos stay on your machine. Click a photo to put it in the selected panel.</p>
-      <div class="tray" id="photoTray"></div>
-      <div class="row">
-        <button type="button" id="uploadBtn" class="btn primary">＋ Add photos</button>
-        <span id="photoCount" class="count">0 photos</span>
-      </div>
-      <input type="file" id="fileInput" accept="image/*" multiple hidden>
-      <p class="hint small">Or drag &amp; drop images anywhere on this panel.</p>
-      <div class="row">
-        <button type="button" id="fillOneBtn" class="btn">Fill all panels · one photo</button>
-        <button type="button" id="fillCycleBtn" class="btn">Fill all panels · cycle photos</button>
-      </div>
-    </div>
-
-    <div class="panel">
+<main class="layout">
+  <section class="stage">
+    <canvas id="preview" width="1920" height="1080" aria-label="Cover preview"></canvas>
+    <p class="hint">Click a panel to select it · drag to move its photo · scroll to zoom it</p>
+  </section>
+  <aside class="panel">
+    <section>
       <h2>Layout</h2>
-      <div class="chips" id="layoutPicker"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Colour grade</h2>
-      <div class="chips" id="gradePicker"></div>
-    </div>
-
-    <div class="panel">
+      <div id="layoutRow" class="btn-row"></div>
+    </section>
+    <section>
+      <h2>Photo</h2>
+      <label class="field">Upload your own
+        <input id="uploadInput" type="file" accept="image/*" multiple>
+      </label>
+      <label class="field"><span>Panel <span id="panelLabel">1</span> photo</span>
+        <select id="panelPhoto"></select>
+      </label>
+      <label class="field">Zoom
+        <input id="zoomRange" type="range" min="1" max="3" step="0.01" value="1.1">
+        <span id="zoomValue">1.10×</span>
+      </label>
+      <div class="btn-row">
+        <button id="centerPhoto" type="button">Centre photo</button>
+        <button id="resetPanel" type="button">Reset panel</button>
+      </div>
+    </section>
+    <section>
       <h2>Caption</h2>
+      <label class="field">Kicker
+        <input id="kickerInput" type="text" maxlength="30" value="WELCOME TO THE">
+      </label>
+      <label class="field">Script line
+        <input id="scriptInput" type="text" maxlength="30" value="sunset heist">
+      </label>
       <label class="field">Title
-        <input type="text" id="titleInput" maxlength="24" autocomplete="off">
+        <input id="titleInput" type="text" maxlength="24" value="NEON SHORES">
       </label>
-      <label class="field">Subtitle
-        <input type="text" id="subtitleInput" maxlength="48" autocomplete="off">
-      </label>
-      <label class="check"><input type="checkbox" id="badgeToggle"> Starburst badge</label>
-      <label class="check"><input type="checkbox" id="grainToggle"> Film grain</label>
-      <label class="check"><input type="checkbox" id="vignetteToggle"> Vignette</label>
-    </div>
-
-    <div class="panel">
-      <h2 id="panelLabel">Panel 1 of 3</h2>
-      <p class="hint">Click a panel in the preview to select it, drag to move its photo, scroll to zoom.</p>
-      <label class="field">Zoom <span id="zoomValue" class="value">1.15×</span>
-        <input type="range" id="zoomRange" min="1" max="3" step="0.01" value="1.15">
-      </label>
-      <label class="field">Move left – right
-        <input type="range" id="xRange" min="-1" max="1" step="0.01" value="0">
-      </label>
-      <label class="field">Move up – down
-        <input type="range" id="yRange" min="-1" max="1" step="0.01" value="0">
-      </label>
-      <div class="row">
-        <button type="button" id="undoBtn" class="btn">↩ Undo</button>
-        <button type="button" id="redoBtn" class="btn">↪ Redo</button>
+      <div id="letteringRow" class="btn-row"></div>
+    </section>
+    <section>
+      <h2>Grade</h2>
+      <div id="gradeRow" class="btn-row"></div>
+      <label class="check"><input id="sunToggle" type="checkbox" checked> Synthwave sun</label>
+      <label class="check"><input id="halftoneToggle" type="checkbox" checked> Halftone dots</label>
+      <label class="check"><input id="grainToggle" type="checkbox" checked> Film grain</label>
+      <label class="check"><input id="vignetteToggle" type="checkbox" checked> Vignette</label>
+    </section>
+    <section>
+      <h2>Export PNG</h2>
+      <div id="sizeRow" class="btn-row"></div>
+      <div class="export-row">
+        <button id="export-1080x1080" type="button">1080 × 1080</button>
+        <button id="export-1080x1350" type="button">1080 × 1350</button>
+        <button id="export-1920x1080" type="button" class="primary">1920 × 1080</button>
       </div>
-    </div>
-
-    <div class="panel export">
-      <h2>Export</h2>
-      <div class="chips" id="sizePicker"></div>
-      <div class="row">
-        <button type="button" id="exportBtn" class="btn primary big">↓ Export PNG</button>
-        <button type="button" id="exportAllBtn" class="btn big">↓ All 3 sizes</button>
-      </div>
-      <p id="exportStatus" class="hint" role="status">Ready.</p>
-    </div>
-  </section>
-
-  <section class="preview-wrap" aria-label="Live preview">
-    <canvas id="preview" width="640" height="360"></canvas>
-    <p class="hint">Live preview — what you see is the PNG you export.</p>
-  </section>
+      <p id="status" role="status">Pick a layout, a photo and a caption — then export.</p>
+    </section>
+    <p class="fine">Photos stay on your machine. Fonts: Anton &amp; Pacifico (SIL OFL) in app/fonts. No Rockstar artwork, logos or fonts.</p>
+  </aside>
 </main>
-
-<footer class="foot">
-  <p>Neon Shore Cover Studio — your photos never leave this browser. Lettering: Anton &amp; Pacifico (SIL Open Font License, see <code>fonts/</code>). Sample photos were made with an image model for this app and are free to use.</p>
-</footer>
-
-<script type="module" src="src/main.js"></script>
+<script type="module" src="./src/main.js"></script>
 </body>
 </html>

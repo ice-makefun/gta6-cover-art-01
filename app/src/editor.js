@@ -1,283 +1,284 @@
-// Neon Shore Cover Studio — editor state and interactions.
-//
-// Holds the cover state, the photo library, undo/redo history and the
-// pointer math for dragging a photo inside its panel. The rendering itself
-// lives in cover.js; this module only decides *what* to draw.
+// Wires the editor sidebar and the preview canvas to the shared store:
+// layout / grade / size / lettering buttons, caption fields, the per-panel
+// photo picker, zoom slider, uploads, drag-to-pan, scroll-to-zoom, shuffle
+// and undo/redo. Every committed change goes through `deps.commit`.
+import { store, cloneState, DEFAULT_STATE } from './state.js';
+import { LAYOUTS, GRADES, SIZES, LETTERINGS } from './grades.js';
+import { layoutRects } from './render.js';
 
-import {
-  defaultState,
-  defaultPanels,
-  drawCover,
-  panelAt,
-  layoutPanels,
-  LAYOUT_IDS,
-  GRADE_IDS,
-} from './cover.js';
+function clamp(v, lo, hi) {
+  return Math.min(hi, Math.max(lo, v));
+}
 
-export const SAMPLE_PHOTOS = [
-  { name: 'Boulevard', src: 'samples/boulevard.jpg' },
-  { name: 'Pier', src: 'samples/pier.jpg' },
-];
+function currentPanel() {
+  return store.state.panels[store.selectedPanel] ?? { photo: 'none', zoom: 1, ox: 0, oy: 0 };
+}
 
-export class CoverEditor {
-  constructor(previewCanvas) {
-    this.preview = previewCanvas;
-    this.state = defaultState();
-    this.photos = []; // { name, img } in load order; index 0/1 are samples
-    this.history = [];
-    this.future = [];
-    this.onchange = null;
-    this.drag = null;
-  }
+function pickRandom(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
 
-  // -- photos ----------------------------------------------------------
-  async loadSamples() {
-    for (const sample of SAMPLE_PHOTOS) {
-      if (this.photos.some((p) => p.name === sample.name)) continue;
-      const img = await loadImage(sample.src);
-      this.photos.push({ name: sample.name, img });
-    }
-    this.render();
-  }
-
-  async addPhotoFiles(fileList) {
-    let added = 0;
-    for (const file of fileList) {
-      if (!file.type.startsWith('image/')) continue;
-      const url = URL.createObjectURL(file);
-      try {
-        const img = await loadImage(url);
-        this.photos.push({ name: file.name.replace(/\.[^.]+$/, ''), img });
-        added += 1;
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-    }
-    if (added) {
-      this.pushHistory();
-      this.render();
-    }
-    return added;
-  }
-
-  // -- state -----------------------------------------------------------
-  pushHistory() {
-    this.history.push(JSON.stringify(this.state));
-    if (this.history.length > 60) this.history.shift();
-    this.future.length = 0;
-  }
-
-  undo() {
-    if (!this.history.length) return false;
-    this.future.push(JSON.stringify(this.state));
-    this.state = JSON.parse(this.history.pop());
-    this.render();
-    return true;
-  }
-
-  redo() {
-    if (!this.future.length) return false;
-    this.history.push(JSON.stringify(this.state));
-    this.state = JSON.parse(this.future.pop());
-    this.render();
-    return true;
-  }
-
-  setLayout(layoutId) {
-    if (!LAYOUT_IDS.includes(layoutId) || layoutId === this.state.layout) return;
-    this.pushHistory();
-    this.state.layout = layoutId;
-    this.state.panels = defaultPanels(layoutId);
-    this.state.selected = 0;
-    this.render();
-  }
-
-  setGrade(gradeId) {
-    if (!GRADE_IDS.includes(gradeId) || gradeId === this.state.grade) return;
-    this.pushHistory();
-    this.state.grade = gradeId;
-    this.render();
-  }
-
-  setTitle(text) {
-    if (text === this.state.title) return;
-    this.state.title = text;
-    this.render();
-  }
-
-  setSubtitle(text) {
-    if (text === this.state.subtitle) return;
-    this.state.subtitle = text;
-    this.render();
-  }
-
-  commitText() {
-    this.pushHistory();
-  }
-
-  toggleBadge(on) {
-    this.pushHistory();
-    this.state.badge = on;
-    this.render();
-  }
-
-  toggleEffect(key, on) {
-    this.pushHistory();
-    this.state[key] = on;
-    this.render();
-  }
-
-  selectPanel(index) {
-    if (index < 0 || index >= this.state.panels.length) return;
-    this.state.selected = index;
-    this.render();
-  }
-
-  // Fill every panel with one photo, cycling the library if asked. The
-  // crop defaults come from a fresh layout so faces stay framed.
-  fillAll(photoIndex, cycle = false) {
-    this.pushHistory();
-    const fresh = defaultPanels(this.state.layout);
-    this.state.panels = this.state.panels.map((panel, i) => ({
-      ...panel,
-      photo: cycle ? (photoIndex + i) % Math.max(1, this.photos.length) : photoIndex,
-      zoom: fresh[i].zoom,
-      ox: fresh[i].ox,
-      oy: fresh[i].oy,
-      anchorY: fresh[i].anchorY,
-    }));
-    this.render();
-  }
-
-  assignPhotoToSelected(photoIndex) {
-    this.pushHistory();
-    const panel = this.state.panels[this.state.selected];
-    if (panel) {
-      panel.photo = photoIndex;
-      panel.zoom = 1.15;
-      panel.ox = 0;
-      panel.oy = 0;
-    }
-    this.render();
-  }
-
-  setSelectedZoom(zoom) {
-    const panel = this.state.panels[this.state.selected];
-    if (!panel) return;
-    panel.zoom = zoom;
-    this.render();
-  }
-
-  setSelectedOffset(ox, oy) {
-    const panel = this.state.panels[this.state.selected];
-    if (!panel) return;
-    panel.ox = ox;
-    panel.oy = oy;
-    this.render();
-  }
-
-  commitPanelEdit() {
-    this.pushHistory();
-  }
-
-  // -- pointer interaction on the preview ------------------------------
-  pointerDown(clientX, clientY) {
-    const rect = this.preview.getBoundingClientRect();
-    const px = clientX - rect.left;
-    const py = clientY - rect.top;
-    const hit = panelAt(this.state, px, py, rect.width, rect.height);
-    if (hit < 0) return false;
-    this.state.selected = hit;
-    const panel = this.state.panels[hit];
-    this.drag = { startX: px, startY: py, ox: panel.ox, oy: panel.oy, moved: false };
-    this.render();
-    return true;
-  }
-
-  pointerMove(clientX, clientY) {
-    if (!this.drag) return;
-    const rect = this.preview.getBoundingClientRect();
-    const px = clientX - rect.left;
-    const py = clientY - rect.top;
-    const panel = this.state.panels[this.state.selected];
-    if (!panel) return;
-    const dx = (px - this.drag.startX) / rect.width;
-    const dy = (py - this.drag.startY) / rect.height;
-    if (Math.abs(dx) + Math.abs(dy) > 0.004) this.drag.moved = true;
-    panel.ox = clamp(this.drag.ox + dx * 2.2, -1, 1);
-    panel.oy = clamp(this.drag.oy + dy * 2.2, -1, 1);
-    this.render();
-  }
-
-  pointerUp() {
-    if (this.drag?.moved) this.pushHistory();
-    this.drag = null;
-  }
-
-  wheelZoom(deltaY) {
-    const panel = this.state.panels[this.state.selected];
-    if (!panel) return;
-    panel.zoom = clamp(panel.zoom * (deltaY > 0 ? 0.94 : 1.06), 1, 3);
-    this.render();
-  }
-
-  // -- rendering + export ----------------------------------------------
-  render() {
-    const canvas = this.preview;
-    const ctx = canvas.getContext('2d');
-    const images = this.photos.map((p) => p.img);
-    drawCover(ctx, this.state, images, canvas.width, canvas.height);
-    this.drawSelection(ctx);
-    if (this.onchange) this.onchange(this.state);
-  }
-
-  drawSelection(ctx) {
-    if (this.state.panels.length < 2) return;
-    const { panels } = layoutPanels(this.state.layout, this.preview.width, this.preview.height);
-    const slot = panels[this.state.selected];
-    if (!slot) return;
-    ctx.save();
-    ctx.strokeStyle = '#00e5ff';
-    ctx.lineWidth = Math.max(3, this.preview.width * 0.006);
-    ctx.setLineDash([14, 8]);
-    ctx.strokeRect(slot.x, slot.y, slot.w, slot.h);
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#00e5ff';
-    ctx.font = `700 ${Math.max(13, Math.round(this.preview.width * 0.022))}px system-ui, sans-serif`;
-    ctx.textBaseline = 'top';
-    const label = `PANEL ${this.state.selected + 1}`;
-    const tw = ctx.measureText(label).width;
-    ctx.fillRect(slot.x, slot.y, tw + 16, Math.round(this.preview.width * 0.032) + 8);
-    ctx.fillStyle = '#14081f';
-    ctx.fillText(label, slot.x + 8, slot.y + 4);
-    ctx.restore();
-  }
-
-  async exportPng(sizeKey) {
-    const { EXPORT_SIZES } = await import('./cover.js');
-    const size = EXPORT_SIZES[sizeKey];
-    if (!size) throw new Error(`unknown size ${sizeKey}`);
-    await document.fonts.ready;
-    const canvas = document.createElement('canvas');
-    canvas.width = size.width;
-    canvas.height = size.height;
-    const ctx = canvas.getContext('2d');
-    const images = this.photos.map((p) => p.img);
-    drawCover(ctx, this.state, images, size.width, size.height);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-    return { blob, filename: `neon-shore-cover-${size.width}x${size.height}.png` };
+/** Builds one row of toggle buttons from a definition map. */
+function buildButtonGroup(container, entries, key, onPick) {
+  container.innerHTML = '';
+  for (const [id, def] of Object.entries(entries)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = def.name ?? def.label ?? id;
+    button.dataset[key] = id;
+    button.addEventListener('click', () => onPick(id));
+    container.appendChild(button);
   }
 }
 
-export function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`could not load image ${src}`));
-    img.src = src;
+function markActive(container, key, value) {
+  container.querySelectorAll('button').forEach((b) => {
+    b.classList.toggle('active', b.dataset[key] === value);
   });
 }
 
-export function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
+/**
+ * Copies the state back into every control: called after undo, redo,
+ * shuffle and shot presets, never on each keystroke.
+ */
+export function syncInputs() {
+  const s = store.state;
+  document.getElementById('titleInput').value = s.title;
+  document.getElementById('scriptInput').value = s.script;
+  document.getElementById('kickerInput').value = s.kicker;
+  document.getElementById('sunToggle').checked = !!s.sun;
+  document.getElementById('halftoneToggle').checked = !!s.halftone;
+  document.getElementById('grainToggle').checked = !!s.grain;
+  document.getElementById('vignetteToggle').checked = !!s.vignette;
+  markActive(document.getElementById('layoutRow'), 'layout', s.layout);
+  markActive(document.getElementById('gradeRow'), 'grade', s.grade);
+  markActive(document.getElementById('sizeRow'), 'size', s.size);
+  markActive(document.getElementById('letteringRow'), 'lettering', s.lettering);
+  syncPanelControls();
+}
+
+/** Rebuilds the per-panel photo picker and zoom slider for the selection. */
+export function syncPanelControls() {
+  const panel = currentPanel();
+  const select = document.getElementById('panelPhoto');
+  const options = [
+    ['boulevard', 'Boulevard — sample photo'],
+    ['pier', 'Pier — sample photo'],
+    ...store.uploads.map((u) => [u.key, `Uploaded — ${u.name}`]),
+    ['none', 'Solid colour (no photo)'],
+  ];
+  select.innerHTML = '';
+  for (const [value, label] of options) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    select.appendChild(option);
+  }
+  select.value = options.some(([v]) => v === panel.photo) ? panel.photo : 'none';
+  document.getElementById('panelLabel').textContent = String(store.selectedPanel + 1);
+  const zoom = document.getElementById('zoomRange');
+  zoom.value = String(panel.zoom || 1);
+  document.getElementById('zoomValue').textContent = `${(panel.zoom || 1).toFixed(2)}×`;
+}
+
+/** Loads uploaded files as panel photos and assigns the newest to the panel. */
+async function handleUploads(files, deps) {
+  for (const file of files) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await deps.loadImage(url);
+      const key = `upload:${store.uploads.length}`;
+      deps.images.set(key, img);
+      store.uploads.push({ key, name: file.name });
+    } catch {
+      // An unreadable file is skipped; the editor keeps working.
+    }
+  }
+  const newest = store.uploads[store.uploads.length - 1];
+  if (newest) currentPanel().photo = newest.key;
+  syncPanelControls();
+  deps.rerender();
+  deps.commit();
+}
+
+/** Picks a fresh random layout, grade, lettering and panel photos. */
+function shuffleCover(deps) {
+  const s = store.state;
+  s.layout = pickRandom(Object.keys(LAYOUTS));
+  s.grade = pickRandom(Object.keys(GRADES));
+  s.lettering = pickRandom(Object.keys(LETTERINGS));
+  const photos = ['boulevard', 'pier', ...store.uploads.map((u) => u.key)];
+  s.panels = s.panels.map((panel) => ({
+    ...panel,
+    photo: pickRandom(photos),
+    zoom: 1.05 + Math.random() * 0.35,
+    ox: (Math.random() - 0.5) * 0.4,
+    oy: (Math.random() - 0.5) * 0.4,
+  }));
+  syncInputs();
+  deps.rerender();
+  deps.commit();
+}
+
+export function wireEditor(deps) {
+  const s = store.state;
+  const preview = document.getElementById('preview');
+
+  buildButtonGroup(document.getElementById('layoutRow'), LAYOUTS, 'layout', (id) => {
+    s.layout = id;
+    syncInputs();
+    deps.rerender();
+    deps.commit();
+  });
+  buildButtonGroup(document.getElementById('gradeRow'), GRADES, 'grade', (id) => {
+    s.grade = id;
+    syncInputs();
+    deps.rerender();
+    deps.commit();
+  });
+  buildButtonGroup(document.getElementById('sizeRow'), SIZES, 'size', (id) => {
+    s.size = id;
+    syncInputs();
+    deps.rerender();
+    deps.commit();
+  });
+  buildButtonGroup(document.getElementById('letteringRow'), LETTERINGS, 'lettering', (id) => {
+    s.lettering = id;
+    syncInputs();
+    deps.rerender();
+    deps.commit();
+  });
+
+  const bindText = (id, key) => {
+    const input = document.getElementById(id);
+    input.addEventListener('input', () => {
+      s[key] = input.value;
+      deps.rerender();
+    });
+    input.addEventListener('change', deps.commit);
+  };
+  bindText('titleInput', 'title');
+  bindText('scriptInput', 'script');
+  bindText('kickerInput', 'kicker');
+
+  const bindToggle = (id, key) => {
+    document.getElementById(id).addEventListener('change', (e) => {
+      s[key] = e.target.checked;
+      deps.rerender();
+      deps.commit();
+    });
+  };
+  bindToggle('sunToggle', 'sun');
+  bindToggle('halftoneToggle', 'halftone');
+  bindToggle('grainToggle', 'grain');
+  bindToggle('vignetteToggle', 'vignette');
+
+  document.getElementById('panelPhoto').addEventListener('change', (e) => {
+    currentPanel().photo = e.target.value;
+    deps.rerender();
+    deps.commit();
+  });
+  const zoom = document.getElementById('zoomRange');
+  zoom.addEventListener('input', () => {
+    currentPanel().zoom = parseFloat(zoom.value);
+    document.getElementById('zoomValue').textContent = `${currentPanel().zoom.toFixed(2)}×`;
+    deps.rerender();
+  });
+  zoom.addEventListener('change', deps.commit);
+  document.getElementById('centerPhoto').addEventListener('click', () => {
+    currentPanel().ox = 0;
+    currentPanel().oy = 0;
+    deps.rerender();
+    deps.commit();
+  });
+  document.getElementById('resetPanel').addEventListener('click', () => {
+    store.state.panels[store.selectedPanel] = { photo: 'boulevard', zoom: 1, ox: 0, oy: 0 };
+    syncPanelControls();
+    deps.rerender();
+    deps.commit();
+  });
+  document.getElementById('uploadInput').addEventListener('change', (e) => {
+    if (e.target.files.length > 0) handleUploads(e.target.files, deps);
+    e.target.value = '';
+  });
+  document.getElementById('shuffleBtn').addEventListener('click', () => shuffleCover(deps));
+  document.getElementById('undoBtn').addEventListener('click', deps.undo);
+  document.getElementById('redoBtn').addEventListener('click', deps.redo);
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+    e.preventDefault();
+    if (e.shiftKey) deps.redo();
+    else deps.undo();
+  });
+
+  for (const [sizeKey, buttonId] of [
+    ['1080x1080', 'export-1080x1080'],
+    ['1080x1350', 'export-1080x1350'],
+    ['1920x1080', 'export-1920x1080'],
+  ]) {
+    document.getElementById(buttonId).addEventListener('click', () => deps.exportCover(sizeKey));
+  }
+
+  // Click a panel to select it; drag to pan its photo; scroll to zoom it.
+  const canvasPos = (e) => {
+    const box = preview.getBoundingClientRect();
+    return {
+      x: (e.clientX - box.left) * (preview.width / box.width),
+      y: (e.clientY - box.top) * (preview.height / box.height),
+    };
+  };
+  let drag = null;
+  preview.addEventListener('pointerdown', (e) => {
+    const pos = canvasPos(e);
+    const rects = layoutRects(s.layout, preview.width, preview.height);
+    const hit = rects.findIndex(
+      (r) => pos.x >= r.x && pos.x < r.x + r.w && pos.y >= r.y && pos.y < r.y + r.h,
+    );
+    if (hit < 0) return;
+    store.selectedPanel = hit;
+    syncPanelControls();
+    preview.setPointerCapture(e.pointerId);
+    const panel = currentPanel();
+    drag = { x: pos.x, y: pos.y, ox: panel.ox || 0, oy: panel.oy || 0 };
+  });
+  preview.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const pos = canvasPos(e);
+    const rect = layoutRects(s.layout, preview.width, preview.height)[store.selectedPanel];
+    const panel = currentPanel();
+    panel.ox = clamp(drag.ox + ((pos.x - drag.x) / rect.w) * 2, -1, 1);
+    panel.oy = clamp(drag.oy + ((pos.y - drag.y) / rect.h) * 2, -1, 1);
+    deps.rerender();
+  });
+  preview.addEventListener('pointerup', () => {
+    if (drag) {
+      drag = null;
+      deps.commit();
+    }
+  });
+  let wheelTimer = null;
+  preview.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const panel = currentPanel();
+      panel.zoom = clamp((panel.zoom || 1) * (1 - e.deltaY * 0.001), 1, 3);
+      syncPanelControls();
+      deps.rerender();
+      clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(deps.commit, 300);
+    },
+    { passive: false },
+  );
+
+  // Keep the DEFAULT_STATE import honest: a fresh reset is one click away
+  // in the console for anyone trying the app, and the constant documents
+  // the cover every new visitor starts from.
+  window.__viceReset = () => {
+    store.state = cloneState(DEFAULT_STATE);
+    store.selectedPanel = 0;
+    syncInputs();
+    deps.rerender();
+    deps.commit();
+  };
 }
